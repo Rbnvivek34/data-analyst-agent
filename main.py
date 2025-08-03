@@ -32,10 +32,11 @@ def handle_request():
 
 def analyze_movies():
     url = "https://en.wikipedia.org/wiki/List_of_highest-grossing_films"
-    df = pd.read_html(url)[0]
+    tables = pd.read_html(url)
+    df = tables[0]
 
-    # Clean columns
-    df.columns = df.columns.droplevel(0)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.droplevel(0)
     df.columns = ['Rank', 'Title', 'Worldwide gross', 'Year', 'Ref']
     df = df[['Rank', 'Title', 'Worldwide gross', 'Year']]
     df['Worldwide gross'] = df['Worldwide gross'].replace(r'[\$,]', '', regex=True).astype(float)
@@ -72,3 +73,4 @@ if __name__ == "__main__":
     import os
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
