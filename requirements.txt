@@ -1,7 +1,8 @@
 flask
-requests
 pandas
 matplotlib
 seaborn
+requests
 beautifulsoup4
-duckdb
+lxml
+gunicorn
