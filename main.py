@@ -32,7 +32,7 @@ def handle_request():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def analyze_movies():
+def analyze_movies_dynamic():
     import pandas as pd
     import matplotlib.pyplot as plt
     import seaborn as sns
@@ -90,4 +90,5 @@ def analyze_movies():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
 
