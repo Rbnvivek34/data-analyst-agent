@@ -11,6 +11,10 @@ import base64
 
 app = Flask(__name__)
 
+@app.route("/")
+def home():
+    return "✅ Data Analyst Agent is running! Use POST /api/ with a .txt file."
+
 @app.route("/api/", methods=["POST"])
 def handle_request():
     file = request.files.get("file")
@@ -64,4 +68,5 @@ def analyze_movies():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
+
 
