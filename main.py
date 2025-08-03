@@ -32,7 +32,7 @@ def analyze_movies():
     df.columns = df.columns.droplevel(0)
     df.columns = ['Rank', 'Title', 'Worldwide gross', 'Year', 'Ref']
     df = df[['Rank', 'Title', 'Worldwide gross', 'Year']]
-    df['Worldwide gross'] = df['Worldwide gross'].replace('[\$,]', '', regex=True).astype(float)
+    df['Worldwide gross'] = df['Worldwide gross'].replace(r'[\$,]', '', regex=True).astype(float)
     df['Year'] = pd.to_numeric(df['Year'], errors='coerce')
     df['Rank'] = pd.to_numeric(df['Rank'], errors='coerce')
 
@@ -64,3 +64,4 @@ def analyze_movies():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
+
