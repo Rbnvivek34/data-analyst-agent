@@ -19,7 +19,7 @@ def is_base64_image(data):
 
 @app.route("/")
 def home():
-    return "✅ Data Analyst Agent is live. Use POST /api/ with a question file."
+    return "Data Analyst Agent is live. Use POST /api/ with a question file."
 
 @app.route("/api/", methods=["POST"])
 def handle_request():
