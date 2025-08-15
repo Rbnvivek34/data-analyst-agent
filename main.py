@@ -194,8 +194,8 @@ Please return ONLY the final result in valid JSON (no extra explanation)."""
         for key, val in output.items():
             if isinstance(val, str):
                 b64_str = val.strip()
-                if b64_str.startswith("data:image/png;base64,"):
-                    b64_str = b64_str[len("data:image/png;base64,"):]
+                #if b64_str.startswith("data:image/png;base64,"):
+                    #b64_str = b64_str[len("data:image/png;base64,"):]
                 if is_base64_image(b64_str):
                     decoded_bytes = base64.b64decode(b64_str)
                     if len(decoded_bytes) > max_size_bytes:
@@ -221,5 +221,6 @@ Please return ONLY the final result in valid JSON (no extra explanation)."""
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
 
 
