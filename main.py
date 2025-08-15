@@ -6,14 +6,15 @@ import time
 import requests
 import json
 import base64
+import imghdr
 
 app = Flask(__name__)
 
-def is_base64_image(data):
+def is_base64_image(data: str) -> bool:
     try:
-        # Try decoding base64 string
-        base64.b64decode(data, validate=True)
-        return True
+        decoded = base64.b64decode(data, validate=True)
+        img_type = imghdr.what(None, decoded)
+        return img_type in ["png", "jpeg", "gif"]
     except Exception:
         return False
 
@@ -109,20 +110,25 @@ Please return ONLY the final result in valid JSON (no extra explanation)."""
         for key, val in parsed.items():
             if isinstance(val, str):
                 base64_data = val.strip()
-                # Strip data URI prefix if present to avoid double prefixing
+
+                # Extract base64 content if already wrapped
                 if base64_data.startswith("data:image/png;base64,"):
                     b64_str = base64_data[len("data:image/png;base64,"):]
                 else:
                     b64_str = base64_data
 
                 if is_base64_image(b64_str):
-                    # Check size limit
                     decoded_bytes = base64.b64decode(b64_str)
                     if len(decoded_bytes) > max_size_bytes:
-                        return jsonify({"error": f"Image field '{key}' exceeds size limit of {max_size_bytes} bytes"}), 400
-                    # Wrap with data URI if not already present
+                        return jsonify({
+                            "error": f"Image field '{key}' exceeds size limit of {max_size_bytes} bytes"
+                        }), 400
+
+                    # Only wrap if not already wrapped
                     if not base64_data.startswith("data:image/png;base64,"):
                         parsed[key] = f"data:image/png;base64,{b64_str}"
+                else:
+                    parsed[key] = val
 
         # Enforce time limit
         if time.time() - start_time > 170:
