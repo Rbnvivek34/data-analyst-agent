@@ -15,6 +15,7 @@ import io
 app = Flask(__name__)
 
 def is_base64_image(data: str) -> bool:
+    """Check if a base64 string decodes to a valid image format."""
     try:
         decoded = base64.b64decode(data, validate=True)
         kind = filetype.guess(decoded)
@@ -23,6 +24,7 @@ def is_base64_image(data: str) -> bool:
         return False
 
 def encode_plot_to_base64(fig, max_size_kb=100):
+    """Encode matplotlib figure to base64 PNG string, error if > max_size_kb."""
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight")
     buf.seek(0)
@@ -33,6 +35,7 @@ def encode_plot_to_base64(fig, max_size_kb=100):
     return base64.b64encode(img_bytes).decode("utf-8")
 
 def analyze_csv_and_answer(csv_path, question_text):
+    """Analyze network graph CSV and answer questions about it."""
     df = pd.read_csv(csv_path)
     if df.shape[1] < 2:
         raise ValueError("CSV must contain at least two columns for edges.")
@@ -46,33 +49,43 @@ def analyze_csv_and_answer(csv_path, question_text):
     avg_degree = sum(degrees.values()) / len(degrees)
     density = nx.density(G)
 
-    # Attempt to extract dynamic node names
+    # Attempt to parse nodes dynamically from question text
     lower_q = question_text.lower()
     source_node, target_node = None, None
+    # Simple heuristic: look for node names mentioned after keywords "between", "and"
     for node in G.nodes():
-        node_lower = node.lower()
-        if f"path between {node_lower}" in lower_q:
+        node_lower = str(node).lower()
+        # Look for pattern "... path between X and Y ..."
+        if f"between {node_lower}" in lower_q:
+            # Extract source node candidate after 'between'
             source_node = node
         elif f"and {node_lower}" in lower_q:
             target_node = node
 
+    # More robust attempt to find source and target nodes (fallback)
+    # Find all node mentions in question and assign first two distinct as source/target
+    if source_node is None or target_node is None:
+        mentioned_nodes = [node for node in G.nodes() if str(node).lower() in lower_q]
+        if len(mentioned_nodes) >= 2:
+            source_node, target_node = mentioned_nodes[0], mentioned_nodes[1]
+
     try:
         if source_node and target_node:
-            shortest_path = nx.shortest_path_length(G, source=source_node, target=target_node)
+            shortest_path_len = nx.shortest_path_length(G, source=source_node, target=target_node)
         else:
-            shortest_path = -1
+            shortest_path_len = -1
     except Exception:
-        shortest_path = -1
+        shortest_path_len = -1
 
-    # Network graph
-    fig1, ax1 = plt.subplots()
+    # Plot network graph
+    fig1, ax1 = plt.subplots(figsize=(6, 4))
     pos = nx.spring_layout(G)
-    nx.draw(G, pos, with_labels=True, node_color="lightblue", edge_color="gray", node_size=1000, ax=ax1)
+    nx.draw(G, pos, with_labels=True, node_color="lightblue", edge_color="gray", node_size=800, ax=ax1)
     network_b64 = encode_plot_to_base64(fig1)
     plt.close(fig1)
 
-    # Degree histogram
-    fig2, ax2 = plt.subplots()
+    # Plot degree histogram
+    fig2, ax2 = plt.subplots(figsize=(6, 4))
     degree_values = list(degrees.values())
     unique_degrees = sorted(set(degree_values))
     counts = [degree_values.count(k) for k in unique_degrees]
@@ -80,12 +93,13 @@ def analyze_csv_and_answer(csv_path, question_text):
     ax2.set_xlabel("Degree")
     ax2.set_ylabel("Count")
     ax2.set_title("Degree Histogram")
+    ax2.grid(axis='y', linestyle='--', alpha=0.7)
     histogram_b64 = encode_plot_to_base64(fig2)
     plt.close(fig2)
 
-    # Format path key dynamically
+    # Prepare key for shortest path in output JSON
     if source_node and target_node:
-        path_key = f"shortest_path_{source_node.lower()}_{target_node.lower()}"
+        path_key = f"shortest_path_{str(source_node).lower()}_{str(target_node).lower()}"
     else:
         path_key = "shortest_path"
 
@@ -94,9 +108,9 @@ def analyze_csv_and_answer(csv_path, question_text):
         "highest_degree_node": highest_degree_node,
         "average_degree": round(avg_degree, 4),
         "density": round(density, 4),
-        path_key: shortest_path,
-        "network_graph": network_b64,
-        "degree_histogram": histogram_b64
+        path_key: shortest_path_len,
+        "network_graph": f"data:image/png;base64,{network_b64}",
+        "degree_histogram": f"data:image/png;base64,{histogram_b64}"
     }
 
 @app.route("/")
@@ -124,12 +138,12 @@ def handle_request():
         file_data[file.filename] = tmp_path
 
     try:
-        # If this is the known network graph question, handle locally
+        # Handle local known network graph question based on keywords and presence of CSV
         if "edge_count" in question_text.lower() and any(f.endswith(".csv") for f in file_data):
             csv_file = next((path for name, path in file_data.items() if name.endswith(".csv")), None)
             output = analyze_csv_and_answer(csv_file, question_text)
         else:
-            # Otherwise, use LLM as fallback
+            # Otherwise, use LLM fallback
             system_prompt = """You are a data analyst assistant. Given a task description and uploaded files, your job is to:
 - Decide what operations (analysis, web scraping, visualization, etc.) are needed.
 - Extract, clean, analyze, and visualize the data.
@@ -175,6 +189,7 @@ Please return ONLY the final result in valid JSON (no extra explanation)."""
 
             raw_output = llm_response.json()["choices"][0]["message"]["content"]
 
+            # Remove markdown triple backticks if present
             if raw_output.strip().startswith("```"):
                 raw_output = raw_output.strip()
                 if raw_output.startswith("```json"):
@@ -189,7 +204,7 @@ Please return ONLY the final result in valid JSON (no extra explanation)."""
             except json.JSONDecodeError as e:
                 return jsonify({"error": "Invalid JSON from LLM", "raw_output": raw_output, "details": str(e)}), 500
 
-        # Validate and wrap base64 image fields
+        # Validate and normalize base64 image fields (must be PNG and <100KB)
         max_size_bytes = 100_000
         for key, val in output.items():
             if isinstance(val, str):
@@ -200,6 +215,7 @@ Please return ONLY the final result in valid JSON (no extra explanation)."""
                     decoded_bytes = base64.b64decode(b64_str)
                     if len(decoded_bytes) > max_size_bytes:
                         return jsonify({"error": f"Image field '{key}' exceeds size limit"}), 400
+                    # Ensure prefix is present
                     if not val.startswith("data:image/png;base64,"):
                         output[key] = f"data:image/png;base64,{b64_str}"
 
@@ -212,6 +228,7 @@ Please return ONLY the final result in valid JSON (no extra explanation)."""
         return jsonify({"error": str(e)}), 500
 
     finally:
+        # Cleanup temp files
         for path in file_data.values():
             try:
                 os.remove(path)
