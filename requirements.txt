@@ -9,5 +9,4 @@ gunicorn
 python-dotenv
 duckdb
 openpyxl
-imghdr
 
