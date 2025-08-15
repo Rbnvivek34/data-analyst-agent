@@ -85,14 +85,30 @@ Please return ONLY the final result in valid JSON (no extra explanation)."""
         if llm_response.status_code != 200:
             return jsonify({"error": "Failed to fetch from GPT", "details": llm_response.text}), 500
 
-        response_data = llm_response.json()
-        final_answer = response_data["choices"][0]["message"]["content"]
+        # Extract and sanitize the response
+        raw_output = llm_response.json()["choices"][0]["message"]["content"]
+
+        # Remove Markdown formatting if present
+        if raw_output.strip().startswith("```"):
+            raw_output = raw_output.strip()
+            if raw_output.startswith("```json"):
+                raw_output = raw_output[len("```json"):].strip()
+            elif raw_output.startswith("```"):
+                raw_output = raw_output[len("```"):].strip()
+            if raw_output.endswith("```"):
+                raw_output = raw_output[:-3].strip()
+
+        # Validate that it's proper JSON
+        try:
+            parsed = json.loads(raw_output)
+        except json.JSONDecodeError as e:
+            return jsonify({"error": "Invalid JSON from LLM", "raw_output": raw_output, "details": str(e)}), 500
 
         # Enforce time limit
         if time.time() - start_time > 170:
             return jsonify({"error": "Request took too long"}), 500
 
-        return final_answer, 200, {'Content-Type': 'application/json'}
+        return json.dumps(parsed), 200, {'Content-Type': 'application/json'}
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
