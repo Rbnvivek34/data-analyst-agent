@@ -187,7 +187,7 @@ def handle_request():
             except json.JSONDecodeError as e:
                 return jsonify({"error": "Invalid JSON from LLM", "raw_output": raw_output, "details": str(e)}), 500
 
-        # ✅ Updated image validation block (prevents invalid_base64 errors)
+        # Updated image validation block (with filetype check)
         max_size_bytes = 100_000
         for key, val in output.items():
             if isinstance(val, str) and "base64" in val:
@@ -196,17 +196,24 @@ def handle_request():
                     b64_str = val[len("data:image/png;base64,"):]
                 else:
                     b64_str = val
-
+        
                 try:
                     decoded_bytes = base64.b64decode(b64_str, validate=True)
+        
                     if len(decoded_bytes) > max_size_bytes:
                         return jsonify({"error": f"Image field '{key}' exceeds 100KB"}), 400
-
-                    # Re-encode safely and add prefix
-                    output[key] = f"data:image/png;base64,{base64.b64encode(decoded_bytes).decode('utf-8')}"
-
+        
+                    # ✅ Check if it's a valid image format using filetype
+                    kind = filetype.guess(decoded_bytes)
+                    if not kind or not kind.mime.startswith("image/"):
+                        return jsonify({"error": f"Field '{key}' is not a valid image (detected: {kind})"}), 400
+        
+                    # ✅ Re-encode and prefix again
+                    output[key] = f"data:{kind.mime};base64,{base64.b64encode(decoded_bytes).decode('utf-8')}"
+        
                 except Exception as e:
                     return jsonify({"error": f"Invalid base64 in field '{key}': {str(e)}"}), 400
+
 
         if time.time() - start_time > 170:
             return jsonify({"error": "Request took too long"}), 500
@@ -226,3 +233,4 @@ def handle_request():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
