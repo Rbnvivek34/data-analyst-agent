@@ -7,4 +7,5 @@ services:
     startCommand: "gunicorn main:app"
     envVars:
       - key: AIPIPE_TOKEN
+        sync: false
 
