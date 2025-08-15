@@ -9,4 +9,5 @@ gunicorn
 python-dotenv
 duckdb
 openpyxl
+filetype
 
