@@ -39,14 +39,14 @@ def handle_request():
         file_data[file.filename] = tmp_path
 
     try:
-        # 1. Prepare prompt and system message
-        system_prompt = """You are a data analyst assistant. Given a task description and uploaded files, your job is to:
-- Decide what operations (analysis, web scraping, visualization, etc.) are needed.
-- Extract, clean, analyze, and visualize the data.
-- Generate results in the required format (JSON, base64 plots, etc.).
-- If the question asks for plots, encode them as base64 image URIs under 100,000 bytes.
-- Return structured data only, like a JSON array or object, depending on the prompt.
-- Do not explain your reasoning, just return the answer."""
+        system_prompt = """You are a data analyst assistant. Given a task and uploaded files, do the following:
+
+- Read and process the data files (e.g., CSVs).
+- Perform any requested analysis (e.g., edge count, degree computation, shortest path).
+- Generate any requested plots using Python, and convert them to base64 PNG strings (under 100 kB).
+- For base64 images, ensure actual image generation with matplotlib/networkx, not dummy or placeholder strings.
+- Return a structured JSON result only (no explanation).
+"""
 
         file_summary = "\n".join([f"- {k}: {mimetypes.guess_type(k)[0] or 'Unknown type'}" for k in file_data])
 
@@ -104,12 +104,15 @@ Please return ONLY the final result in valid JSON (no extra explanation)."""
         except json.JSONDecodeError as e:
             return jsonify({"error": "Invalid JSON from LLM", "raw_output": raw_output, "details": str(e)}), 500
 
-        # ✅ Wrap base64 image fields in proper data URI
+        # Validate base64 image size
         for img_field in ["network_graph", "degree_histogram"]:
-            if img_field in parsed and isinstance(parsed[img_field], str):
+            if img_field in parsed:
                 base64_data = parsed[img_field].strip()
                 if not base64_data.startswith("data:image/png;base64,"):
-                    parsed[img_field] = f"data:image/png;base64,{base64_data}"
+                    base64_data = f"data:image/png;base64,{base64_data}"
+                if not is_valid_base64_image(base64_data):
+                    raise ValueError(f"Invalid or too small base64 image for: {img_field}")
+                parsed[img_field] = base64_data
 
         # Enforce time limit
         if time.time() - start_time > 170:
@@ -123,3 +126,4 @@ Please return ONLY the final result in valid JSON (no extra explanation)."""
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
