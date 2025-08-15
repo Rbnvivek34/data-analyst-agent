@@ -6,15 +6,15 @@ import time
 import requests
 import json
 import base64
-import imghdr
+import filetype
 
 app = Flask(__name__)
 
 def is_base64_image(data: str) -> bool:
     try:
         decoded = base64.b64decode(data, validate=True)
-        img_type = imghdr.what(None, decoded)
-        return img_type in ["png", "jpeg", "gif"]
+        kind = filetype.guess(decoded)
+        return kind is not None and kind.mime.startswith("image/")
     except Exception:
         return False
 
@@ -150,3 +150,4 @@ Please return ONLY the final result in valid JSON (no extra explanation)."""
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
