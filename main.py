@@ -32,6 +32,33 @@ def encode_plot_to_base64(fig, max_size_kb=100):
         raise ValueError("Image exceeds 100kB limit")
     return base64.b64encode(img_bytes).decode("utf-8")
 
+def generate_bar_chart(df, x_col, y_col, title="Bar Chart"):
+    fig, ax = plt.subplots()
+    ax.bar(df[x_col], df[y_col], color="skyblue")
+    ax.set_xlabel(x_col)
+    ax.set_ylabel(y_col)
+    ax.set_title(title)
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
+    b64_img = encode_plot_to_base64(fig)
+    plt.close(fig)
+    return b64_img
+
+def generate_cumulative_sales_chart(df, date_col, sales_col, title="Cumulative Sales Over Time"):
+    df_sorted = df.sort_values(by=date_col)
+    df_sorted["cumulative_sales"] = df_sorted[sales_col].cumsum()
+
+    fig, ax = plt.subplots()
+    ax.plot(df_sorted[date_col], df_sorted["cumulative_sales"], marker="o", color="orange")
+    ax.set_xlabel(date_col)
+    ax.set_ylabel("Cumulative Sales")
+    ax.set_title(title)
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
+    b64_img = encode_plot_to_base64(fig)
+    plt.close(fig)
+    return b64_img
+
 def analyze_csv_and_answer(csv_path, question_text):
     df = pd.read_csv(csv_path)
     if df.shape[1] < 2:
@@ -99,6 +126,31 @@ def analyze_csv_and_answer(csv_path, question_text):
         "degree_histogram": histogram_b64
     }
 
+def analyze_sales_csv(csv_path):
+    df = pd.read_csv(csv_path)
+    # Bar chart for sales per product (assuming columns 'Product' and 'Sales')
+    if "Product" in df.columns and "Sales" in df.columns:
+        bar_chart_b64 = generate_bar_chart(df.groupby("Product")["Sales"].sum().reset_index(),
+                                          x_col="Product", y_col="Sales",
+                                          title="Total Sales by Product")
+    else:
+        bar_chart_b64 = None
+    # Cumulative sales over time (assuming columns 'Date' and 'Sales')
+    if "Date" in df.columns and "Sales" in df.columns:
+        # Convert 'Date' to datetime if not already
+        df["Date"] = pd.to_datetime(df["Date"])
+        cumulative_sales_b64 = generate_cumulative_sales_chart(df, date_col="Date", sales_col="Sales")
+    else:
+        cumulative_sales_b64 = None
+
+    result = {}
+    if bar_chart_b64:
+        result["bar_chart"] = bar_chart_b64
+    if cumulative_sales_b64:
+        result["cumulative_sales_chart"] = cumulative_sales_b64
+
+    return result
+
 @app.route("/")
 def home():
     return "Data Analyst Agent is live. Use POST /api/ with a question file."
@@ -128,6 +180,8 @@ def handle_request():
         if "edge_count" in question_text.lower() and any(f.endswith(".csv") for f in file_data):
             csv_file = next((path for name, path in file_data.items() if name.endswith(".csv")), None)
             output = analyze_csv_and_answer(csv_file, question_text)
+        elif "bar chart" in question_text.lower() or "cumulative sales" in question_text.lower():
+            output = analyze_sales_csv(csv_file)
         else:
             # Otherwise, use LLM as fallback
             system_prompt = """You are a data analyst assistant. Given a task description and uploaded files, your job is to:
@@ -221,6 +275,7 @@ Please return ONLY the final result in valid JSON (no extra explanation)."""
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
