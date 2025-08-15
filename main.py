@@ -194,12 +194,12 @@ def handle_request():
             if llm_response.status_code != 200:
                 return jsonify({"error": "Failed to fetch from GPT", "details": llm_response.text}), 500
             raw_output = llm_response.json()["choices"][0]["message"]["content"]
-            if raw_output.strip().startswith("```
+            if raw_output.strip().startswith("```"):
                 raw_output = raw_output.strip()
                 if raw_output.startswith("```json"):
-                    raw_output = raw_output[len("```
+                    raw_output = raw_output[len("```json"):].strip()
                 elif raw_output.startswith("```"):
-                    raw_output = raw_output[len("```
+                    raw_output = raw_output[len("```"):].strip()
                 if raw_output.endswith("```"):
                     raw_output = raw_output[:-3].strip()
             try:
@@ -234,3 +234,4 @@ def handle_request():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
