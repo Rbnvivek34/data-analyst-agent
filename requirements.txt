@@ -10,4 +10,7 @@ python-dotenv
 duckdb
 openpyxl
 filetype
+fastapi
+uvicorn
+networkx
 
