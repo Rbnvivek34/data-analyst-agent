@@ -1,17 +1,21 @@
 from flask import Flask, request, jsonify
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-from io import BytesIO
-import base64
 import os
 import tempfile
 import mimetypes
 import time
 import requests
 import json
+import base64
 
 app = Flask(__name__)
+
+def is_base64_image(data):
+    try:
+        # Try decoding base64 string
+        base64.b64decode(data, validate=True)
+        return True
+    except Exception:
+        return False
 
 @app.route("/")
 def home():
@@ -39,14 +43,13 @@ def handle_request():
         file_data[file.filename] = tmp_path
 
     try:
-        system_prompt = """You are a data analyst assistant. Given a task and uploaded files, do the following:
-
-- Read and process the data files (e.g., CSVs).
-- Perform any requested analysis (e.g., edge count, degree computation, shortest path).
-- Generate any requested plots using Python, and convert them to base64 PNG strings (under 100 kB).
-- For base64 images, ensure actual image generation with matplotlib/networkx, not dummy or placeholder strings.
-- Return a structured JSON result only (no explanation).
-"""
+        system_prompt = """You are a data analyst assistant. Given a task description and uploaded files, your job is to:
+- Decide what operations (analysis, web scraping, visualization, etc.) are needed.
+- Extract, clean, analyze, and visualize the data.
+- Generate results in the required format (JSON, base64 plots, etc.).
+- If the question asks for plots, encode them as base64 image URIs under 100,000 bytes.
+- Return structured data only, like a JSON array or object, depending on the prompt.
+- Do not explain your reasoning, just return the answer."""
 
         file_summary = "\n".join([f"- {k}: {mimetypes.guess_type(k)[0] or 'Unknown type'}" for k in file_data])
 
@@ -57,12 +60,10 @@ Uploaded Files:
 
 Please return ONLY the final result in valid JSON (no extra explanation)."""
 
-        # 2. Get the AIPipe token from environment or config
         aipipe_token = os.environ.get("AIPIPE_TOKEN")
         if not aipipe_token:
             return jsonify({"error": "AIPIPE_TOKEN is not set in environment variables"}), 401
 
-        # 3. Send request to AIPipe endpoint
         headers = {
             "Authorization": f"Bearer {aipipe_token}",
             "Content-Type": "application/json"
@@ -85,7 +86,6 @@ Please return ONLY the final result in valid JSON (no extra explanation)."""
         if llm_response.status_code != 200:
             return jsonify({"error": "Failed to fetch from GPT", "details": llm_response.text}), 500
 
-        # Extract and sanitize the response
         raw_output = llm_response.json()["choices"][0]["message"]["content"]
 
         # Remove Markdown formatting if present
@@ -98,21 +98,31 @@ Please return ONLY the final result in valid JSON (no extra explanation)."""
             if raw_output.endswith("```"):
                 raw_output = raw_output[:-3].strip()
 
-        # Validate that it's proper JSON
+        # Validate JSON
         try:
             parsed = json.loads(raw_output)
         except json.JSONDecodeError as e:
             return jsonify({"error": "Invalid JSON from LLM", "raw_output": raw_output, "details": str(e)}), 500
 
-        # Validate base64 image size
-        for img_field in ["network_graph", "degree_histogram"]:
-            if img_field in parsed:
-                base64_data = parsed[img_field].strip()
-                if not base64_data.startswith("data:image/png;base64,"):
-                    base64_data = f"data:image/png;base64,{base64_data}"
-                if not is_valid_base64_image(base64_data):
-                    raise ValueError(f"Invalid or too small base64 image for: {img_field}")
-                parsed[img_field] = base64_data
+        # Wrap base64 image fields in data URI and check size
+        max_size_bytes = 100_000
+        for key, val in parsed.items():
+            if isinstance(val, str):
+                base64_data = val.strip()
+                # Strip data URI prefix if present to avoid double prefixing
+                if base64_data.startswith("data:image/png;base64,"):
+                    b64_str = base64_data[len("data:image/png;base64,"):]
+                else:
+                    b64_str = base64_data
+
+                if is_base64_image(b64_str):
+                    # Check size limit
+                    decoded_bytes = base64.b64decode(b64_str)
+                    if len(decoded_bytes) > max_size_bytes:
+                        return jsonify({"error": f"Image field '{key}' exceeds size limit of {max_size_bytes} bytes"}), 400
+                    # Wrap with data URI if not already present
+                    if not base64_data.startswith("data:image/png;base64,"):
+                        parsed[key] = f"data:image/png;base64,{b64_str}"
 
         # Enforce time limit
         if time.time() - start_time > 170:
@@ -123,7 +133,14 @@ Please return ONLY the final result in valid JSON (no extra explanation)."""
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+    finally:
+        # Clean up temp files
+        for path in file_data.values():
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
-
