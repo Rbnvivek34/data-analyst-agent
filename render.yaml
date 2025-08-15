@@ -2,6 +2,9 @@ services:
   - type: web
     name: data-analyst-agent
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python main.py
     plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn main:app"
+    envVars:
+      - key: AIPIPE_TOKEN
+
