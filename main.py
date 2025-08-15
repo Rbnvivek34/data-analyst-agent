@@ -104,6 +104,13 @@ Please return ONLY the final result in valid JSON (no extra explanation)."""
         except json.JSONDecodeError as e:
             return jsonify({"error": "Invalid JSON from LLM", "raw_output": raw_output, "details": str(e)}), 500
 
+        # ✅ Wrap base64 image fields in proper data URI
+        for img_field in ["network_graph", "degree_histogram"]:
+            if img_field in parsed and isinstance(parsed[img_field], str):
+                base64_data = parsed[img_field].strip()
+                if not base64_data.startswith("data:image/png;base64,"):
+                    parsed[img_field] = f"data:image/png;base64,{base64_data}"
+
         # Enforce time limit
         if time.time() - start_time > 170:
             return jsonify({"error": "Request took too long"}), 500
