@@ -201,7 +201,7 @@ Please return ONLY the final result in valid JSON (no extra explanation)."""
                     if len(decoded_bytes) > max_size_bytes:
                         return jsonify({"error": f"Image field '{key}' exceeds size limit"}), 400
                     if not val.startswith("data:image/png;base64,"):
-                        output[key] = f"data:image/png;base64,{b64_str}"
+                        output[key] = f"{b64_str}"
 
         if time.time() - start_time > 170:
             return jsonify({"error": "Request took too long"}), 500
@@ -221,3 +221,4 @@ Please return ONLY the final result in valid JSON (no extra explanation)."""
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
